@@ -36,6 +36,7 @@ public class TcpSinkConfigurationProperties {
 
     private boolean secure = false;
     private boolean eagerLoad = true;
+    private String separator = "\n";
 
     private Map<ChannelOption<Object>, Object> options = new LinkedHashMap<>();
 
@@ -69,6 +70,14 @@ public class TcpSinkConfigurationProperties {
 
     public void setEagerLoad(boolean eagerLoad) {
         this.eagerLoad = eagerLoad;
+    }
+
+    public String getSeparator() {
+        return separator;
+    }
+
+    public void setSeparator(String separator) {
+        this.separator = separator;
     }
 
     public Map<ChannelOption<Object>, Object> getOptions() {

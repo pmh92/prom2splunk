@@ -34,6 +34,7 @@ import reactor.core.publisher.Mono;
 import reactor.netty.Connection;
 import reactor.netty.tcp.TcpClient;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
@@ -47,6 +48,7 @@ public class TcpSink implements SplunkSink, SmartLifecycle {
     private final TcpSinkConfigurationProperties properties;
     private final TcpClient client;
     private final Encoder<Object> encoder;
+
     private Connection connection;
     private final DataBufferFactory factory = new DefaultDataBufferFactory();
 
@@ -92,6 +94,7 @@ public class TcpSink implements SplunkSink, SmartLifecycle {
     public Mono<Void> apply(MetricSample sample) {
         this.eventsCounter.increment();
         logger.trace("About to send: {}", sample);
+        final ByteBuf separator = Unpooled.wrappedBuffer(this.properties.getSeparator().getBytes(StandardCharsets.UTF_8));
         final Flux<ByteBuf> encoded = encoder.encode(Mono.just(sample), factory, ResolvableType.forInstance(sample), MediaType.APPLICATION_JSON, null)
                 .map(DataBuffer::asByteBuffer)
                 .doOnNext(buf -> this.bytesCounter.increment(buf.capacity()))
@@ -99,7 +102,7 @@ public class TcpSink implements SplunkSink, SmartLifecycle {
         if (!isRunning()) {
             throw new IllegalArgumentException("TCP Client is not running");
         }
-        return Mono.from(this.connection.outbound().send(encoded));
+        return Mono.from(this.connection.outbound().send(Flux.concat(encoded, Mono.just(separator))));
     }
 
     @Override

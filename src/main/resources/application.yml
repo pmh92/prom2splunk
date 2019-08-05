@@ -2,6 +2,7 @@ prom2splunk:
   sink:
     tcp:
       port: 1234
+      separator: \n
 management:
   endpoints:
     web:
