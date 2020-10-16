@@ -1,5 +1,5 @@
 /*
- * Copyright 2019. Pedro Morales
+ * Copyright 2020. Pedro Morales
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -21,11 +21,21 @@ import reactor.core.publisher.Mono;
 import java.util.List;
 
 /**
+ * By default Prometheus sends the metrics to the remote_write endpoint using Snappy compression. This filter decompresses the payload upon arrival
  *
+ * @see SnappyContentEncodedRequest
  */
 @Component
 public class SnappyWebFilter implements WebFilter {
 
+    /**
+     * Filter the request to perform Snappy decompression if required
+     *
+     * @param exchange the current server exchange
+     * @param chain    provides a way to delegate to the next filter
+     *
+     * @return {@code Mono<Void>} to indicate when request processing is complete
+     */
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();

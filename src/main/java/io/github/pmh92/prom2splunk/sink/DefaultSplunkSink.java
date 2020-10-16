@@ -1,5 +1,5 @@
 /*
- * Copyright 2019. Pedro Morales
+ * Copyright 2020. Pedro Morales
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -11,12 +11,11 @@
 package io.github.pmh92.prom2splunk.sink;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.github.pmh92.prom2splunk.model.MetricSample;
+import io.github.pmh92.prom2splunk.model.PrometheusSample;
 import io.github.pmh92.prom2splunk.properties.TcpSinkConfigurationProperties;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.ChannelOption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +24,8 @@ import org.springframework.core.ResolvableType;
 import org.springframework.core.codec.Encoder;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferFactory;
-import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import org.springframework.core.io.buffer.NettyDataBufferFactory;
+import org.springframework.core.io.buffer.PooledDataBuffer;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.json.Jackson2JsonEncoder;
 import org.springframework.stereotype.Service;
@@ -34,6 +34,7 @@ import reactor.core.publisher.Mono;
 import reactor.netty.Connection;
 import reactor.netty.tcp.TcpClient;
 
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
@@ -41,39 +42,41 @@ import java.util.Map;
  * This configures and sets-up the TCP sink for all the metrics received
  */
 @Service
-public class TcpSink implements SplunkSink, SmartLifecycle {
+public class DefaultSplunkSink implements SplunkSink, SmartLifecycle {
 
-    private static final Logger logger = LoggerFactory.getLogger(TcpSink.class);
+    private static final Logger logger = LoggerFactory.getLogger(DefaultSplunkSink.class);
 
     private final TcpSinkConfigurationProperties properties;
     private final TcpClient client;
     private final Encoder<Object> encoder;
 
     private Connection connection;
-    private final DataBufferFactory factory = new DefaultDataBufferFactory();
 
     private Counter bytesCounter;
     private Counter eventsCounter;
 
-    public TcpSink(MeterRegistry metrics, TcpSinkConfigurationProperties properties, ObjectMapper mapper) {
+    private DataBufferFactory bufferFactory;
+
+    public DefaultSplunkSink(MeterRegistry metrics, TcpSinkConfigurationProperties properties, ObjectMapper mapper) {
         // Defaults to JSON encoder / Investigate on using alternative encoders?
         registerMetrics(metrics);
         this.encoder = new Jackson2JsonEncoder(mapper, MediaType.APPLICATION_JSON);
         this.properties = properties;
         // Configures the TcpClient to connect to
-        TcpClient client = TcpClient.create()
+        TcpClient builder = TcpClient.create()
                 .option(ChannelOption.SO_KEEPALIVE, true)
                 .host(this.properties.getHost())
                 .doOnConnected(c -> logger.info(String.format("Connected to: %s", c.address())))
                 .doOnDisconnected(c -> logger.info(String.format("Disconnected from: %s", c.address())))
                 .port(this.properties.getPort());
-        if (this.properties.isSecure())
-            client = client.secure();
+        if (this.properties.isSecure()) {
+            builder = builder.secure();
+        }
         // Set customized options
         for (Map.Entry<ChannelOption<Object>, Object> options : this.properties.getOptions().entrySet()) {
-            client = client.option(options.getKey(), options.getValue());
+            builder = builder.option(options.getKey(), options.getValue());
         }
-        this.client = client;
+        this.client = builder;
     }
 
     private void registerMetrics(MeterRegistry metrics) {
@@ -87,22 +90,22 @@ public class TcpSink implements SplunkSink, SmartLifecycle {
                 .description("Events sent to the sink")
                 .tag("protocol", "tcp")
                 .register(metrics);
-
     }
 
     @Override
-    public Mono<Void> apply(MetricSample sample) {
+    public Mono<Void> handle(PrometheusSample sample) {
         this.eventsCounter.increment();
         logger.trace("About to send: {}", sample);
-        final ByteBuf separator = Unpooled.wrappedBuffer(this.properties.getSeparator().getBytes(StandardCharsets.UTF_8));
-        final Flux<ByteBuf> encoded = encoder.encode(Mono.just(sample), factory, ResolvableType.forInstance(sample), MediaType.APPLICATION_JSON, null)
-                .map(DataBuffer::asByteBuffer)
-                .doOnNext(buf -> this.bytesCounter.increment(buf.capacity()))
-                .map(Unpooled::wrappedBuffer);
-        if (!isRunning()) {
+        if (isRunning()) {
+            final Flux<DataBuffer> encoded = encoder.encode(Mono.just(sample), bufferFactory, ResolvableType.forInstance(sample), MediaType.APPLICATION_JSON, null)
+                    .concatWith(encodeText("\n", StandardCharsets.UTF_8, bufferFactory))
+                    .doOnNext(buf -> this.bytesCounter.increment(buf.readableByteCount()));
+            return Mono.from(this.connection.outbound().send(encoded
+                    .doOnDiscard(PooledDataBuffer.class, PooledDataBuffer::release)
+                    .map(NettyDataBufferFactory::toByteBuf)));
+        } else {
             throw new IllegalArgumentException("TCP Client is not running");
         }
-        return Mono.from(this.connection.outbound().send(Flux.concat(encoded, Mono.just(separator))));
     }
 
     @Override
@@ -113,6 +116,9 @@ public class TcpSink implements SplunkSink, SmartLifecycle {
     @Override
     public void start() {
         this.connection = this.client.connectNow();
+        // Configures bytes allocator
+        final ByteBufAllocator alloc = this.connection.outbound().alloc();
+        this.bufferFactory = new NettyDataBufferFactory(alloc);
     }
 
     @Override
@@ -124,5 +130,10 @@ public class TcpSink implements SplunkSink, SmartLifecycle {
     @Override
     public boolean isRunning() {
         return this.connection != null;
+    }
+
+    private Mono<DataBuffer> encodeText(CharSequence text, Charset charset, DataBufferFactory bufferFactory) {
+        byte[] bytes = text.toString().getBytes(charset);
+        return Mono.just(bufferFactory.wrap(bytes)); // wrapping, not allocating
     }
 }

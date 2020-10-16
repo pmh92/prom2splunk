@@ -1,5 +1,5 @@
 /*
- * Copyright 2019. Pedro Morales
+ * Copyright 2020. Pedro Morales
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -15,6 +15,9 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
+/**
+ * Main application process
+ */
 @SpringBootApplication
 @EnableConfigurationProperties(TcpSinkConfigurationProperties.class)
 public class Prometheus2SplunkApplication {

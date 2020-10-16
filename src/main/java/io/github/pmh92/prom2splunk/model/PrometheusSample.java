@@ -1,5 +1,5 @@
 /*
- * Copyright 2019. Pedro Morales
+ * Copyright 2020. Pedro Morales
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -13,14 +13,14 @@ package io.github.pmh92.prom2splunk.model;
 import java.util.Map;
 
 /**
- *
+ * A Prometheus sample
  */
-public class MetricSample {
+public class PrometheusSample {
     private final long timestamp;
     private final Map<String,String> labels;
     private final double value;
 
-    public MetricSample(long timestamp, Map<String, String> labels, double value) {
+    public PrometheusSample(long timestamp, Map<String, String> labels, double value) {
         this.timestamp = timestamp;
         this.labels = labels;
         this.value = value;
@@ -40,8 +40,8 @@ public class MetricSample {
 
     @Override
     public String toString() {
-        return "MetricSample{" +
-                "timestamp=" + timestamp +
+        return "PrometheusSample{" +
+                "ts=" + timestamp +
                 ", labels=" + labels +
                 ", value=" + value +
                 '}';

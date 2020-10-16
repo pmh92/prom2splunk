@@ -1,5 +1,5 @@
 /*
- * Copyright 2019. Pedro Morales
+ * Copyright 2020. Pedro Morales
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -27,17 +27,32 @@ import java.util.Map;
 @ConfigurationProperties("prom2splunk.sink.tcp")
 public class TcpSinkConfigurationProperties {
 
+    /**
+     * The host where the Splunk sink is listening for connections
+     */
     @NotEmpty
     private String host = "localhost";
 
+    /**
+     * The TCP port where the Splunk sink is listening for connections
+     */
     @NotNull
     @Range(min = 1, max = 65535)
     private int port;
 
+    /**
+     * Whether the Splunk sink is using TLS
+     */
     private boolean secure = false;
+    /**
+     * Whether the Splunk sink shall eagerly connect to the target
+     */
     private boolean eagerLoad = true;
-    private String separator = "\n";
 
+    /**
+     * TCP socket options.
+     * @see ChannelOption
+     */
     private Map<ChannelOption<Object>, Object> options = new LinkedHashMap<>();
 
     public String getHost() {
@@ -70,14 +85,6 @@ public class TcpSinkConfigurationProperties {
 
     public void setEagerLoad(boolean eagerLoad) {
         this.eagerLoad = eagerLoad;
-    }
-
-    public String getSeparator() {
-        return separator;
-    }
-
-    public void setSeparator(String separator) {
-        this.separator = separator;
     }
 
     public Map<ChannelOption<Object>, Object> getOptions() {

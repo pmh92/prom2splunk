@@ -14,15 +14,27 @@ import io.github.pmh92.prom2splunk.model.PrometheusSample;
 import reactor.core.publisher.Mono;
 
 /**
- *
+ * Filter for a {@link SplunkSink}
  */
 @FunctionalInterface
-public interface SplunkSink {
+public interface SinkFilter {
+    Mono<Void> filter(PrometheusSample sample, SplunkSink next);
 
     /**
-     * Sends a single MetricSample to Splunk
-     * @param sample the metric sample to send
-     * @return a {@code Mono} than completes when the message has been acknowledged.
+     * Compose two filters
+     * @param other the next filter in the chain
+     * @return a composition of the current and the mext filter
      */
-    Mono<Void> handle(PrometheusSample sample);
+    default SinkFilter andThen(SinkFilter other) {
+        return (sample, next) -> this.filter(sample, afterSample -> other.filter(afterSample, next));
+    }
+
+    /**
+     * Applies a filter to a given sink. Adding the filter to the processing chain
+     * @param sink the sink to filter
+     * @return the filtered sink
+     */
+    default SplunkSink apply(SplunkSink sink) {
+        return sample -> this.filter(sample, sink);
+    }
 }
