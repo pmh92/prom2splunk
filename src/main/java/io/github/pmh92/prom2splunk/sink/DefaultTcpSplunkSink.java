@@ -15,6 +15,7 @@ import io.github.pmh92.prom2splunk.model.PrometheusSample;
 import io.github.pmh92.prom2splunk.properties.TcpSinkConfigurationProperties;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tag;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.ChannelOption;
 import org.slf4j.Logger;
@@ -36,30 +37,30 @@ import reactor.netty.tcp.TcpClient;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * This configures and sets-up the TCP sink for all the metrics received
  */
 @Service
-public class DefaultSplunkSink implements SplunkSink, SmartLifecycle {
+public class DefaultTcpSplunkSink implements SplunkSink, SmartLifecycle {
 
-    private static final Logger logger = LoggerFactory.getLogger(DefaultSplunkSink.class);
+    private static final Logger logger = LoggerFactory.getLogger(DefaultTcpSplunkSink.class);
+    private static final Tag NONE_EXCEPTION_TAG = Tag.of("exception", "None");
+    private static final Tag JSON_ENCODING_TAG = Tag.of("encoding", MediaType.APPLICATION_JSON_VALUE);
 
     private final TcpSinkConfigurationProperties properties;
     private final TcpClient client;
-    private final Encoder<Object> encoder;
+    private final Encoder<? super PrometheusSample> encoder;
+    private final MeterRegistry registry;
 
     private Connection connection;
-
-    private Counter bytesCounter;
-    private Counter eventsCounter;
-
     private DataBufferFactory bufferFactory;
 
-    public DefaultSplunkSink(MeterRegistry metrics, TcpSinkConfigurationProperties properties, ObjectMapper mapper) {
+    public DefaultTcpSplunkSink(MeterRegistry metrics, TcpSinkConfigurationProperties properties, ObjectMapper mapper) {
         // Defaults to JSON encoder / Investigate on using alternative encoders?
-        registerMetrics(metrics);
         this.encoder = new Jackson2JsonEncoder(mapper, MediaType.APPLICATION_JSON);
         this.properties = properties;
         // Configures the TcpClient to connect to
@@ -77,35 +78,40 @@ public class DefaultSplunkSink implements SplunkSink, SmartLifecycle {
             builder = builder.option(options.getKey(), options.getValue());
         }
         this.client = builder;
-    }
-
-    private void registerMetrics(MeterRegistry metrics) {
-        // Register metrics
-        this.bytesCounter = Counter.builder("sink.bytes")
-                .baseUnit("bytes")
-                .tag("protocol", "tcp")
-                .description("Bytes sent to the sink")
-                .register(metrics);
-        this.eventsCounter = Counter.builder("sink.events")
-                .description("Events sent to the sink")
-                .tag("protocol", "tcp")
-                .register(metrics);
+        this.registry = metrics;
     }
 
     @Override
     public Mono<Void> handle(PrometheusSample sample) {
-        this.eventsCounter.increment();
         logger.trace("About to send: {}", sample);
         if (isRunning()) {
+            AtomicInteger bytes = new AtomicInteger(0);
             final Flux<DataBuffer> encoded = encoder.encode(Mono.just(sample), bufferFactory, ResolvableType.forInstance(sample), MediaType.APPLICATION_JSON, null)
                     .concatWith(encodeText("\n", StandardCharsets.UTF_8, bufferFactory))
-                    .doOnNext(buf -> this.bytesCounter.increment(buf.readableByteCount()));
-            return Mono.from(this.connection.outbound().send(encoded
-                    .doOnDiscard(PooledDataBuffer.class, PooledDataBuffer::release)
-                    .map(NettyDataBufferFactory::toByteBuf)));
+                    .doOnNext(buf -> bytes.addAndGet(buf.readableByteCount()));
+            return Mono.from(this.connection.outbound()
+                    .send(encoded.doOnDiscard(PooledDataBuffer.class, PooledDataBuffer::release).map(NettyDataBufferFactory::toByteBuf)))
+                    .doOnSuccessOrError((r, ex) -> recordMetrics(bytes.get(), 1, sample, ex));
         } else {
             throw new IllegalArgumentException("TCP Client is not running");
         }
+    }
+
+    private void recordMetrics(int bytes, int events, PrometheusSample sample, Throwable error) {
+        Counter.builder("sink.bytes").baseUnit("bytes").description("Bytes sent to the sink")
+                .tags(tags(sample, error)).register(this.registry)
+                .increment(bytes);
+        Counter.builder("sink.events").description("Events sent to the sink")
+                .tags(tags(sample, error)).register(this.registry)
+                .increment(events);
+    }
+
+    private Iterable<Tag> tags(PrometheusSample sample, Throwable error) {
+        return Arrays.asList(
+                Tag.of("protocol", this.client.isSecure() ? "tls" : "tcp"),
+                JSON_ENCODING_TAG,
+                error != null ? Tag.of("exception", error.getClass().getName()) : NONE_EXCEPTION_TAG
+        );
     }
 
     @Override
