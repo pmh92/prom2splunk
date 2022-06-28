@@ -1,5 +1,5 @@
 /*
- * Copyright 2021. Pedro Morales
+ * Copyright 2022. Pedro Morales
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -91,27 +91,25 @@ public class DefaultTcpSplunkSink implements SplunkSink, SmartLifecycle {
                     .doOnNext(buf -> bytes.addAndGet(buf.readableByteCount()));
             return Mono.from(this.connection.outbound()
                     .send(encoded.doOnDiscard(PooledDataBuffer.class, PooledDataBuffer::release).map(NettyDataBufferFactory::toByteBuf)))
-                    .doOnSuccessOrError((r, ex) -> recordMetrics(bytes.get(), 1, sample, ex));
+                    .doOnSuccess((r) -> recordMetrics(bytes.get(), 1, sample, null))
+                    .doOnError((ex) -> recordMetrics(bytes.get(), 1, sample, ex));
         } else {
             throw new IllegalArgumentException("TCP Client is not running");
         }
     }
 
     private void recordMetrics(int bytes, int events, PrometheusSample sample, Throwable error) {
+        final Iterable<Tag> tags = tags(sample, error);
         Counter.builder("sink.bytes").baseUnit("bytes").description("Bytes sent to the sink")
-                .tags(tags(sample, error)).register(this.registry)
+                .tags(tags).register(this.registry)
                 .increment(bytes);
         Counter.builder("sink.events").description("Events sent to the sink")
-                .tags(tags(sample, error)).register(this.registry)
+                .tags(tags).register(this.registry)
                 .increment(events);
     }
 
     private Iterable<Tag> tags(PrometheusSample sample, Throwable error) {
-        return Arrays.asList(
-                Tag.of("protocol", this.client.isSecure() ? "tls" : "tcp"),
-                JSON_ENCODING_TAG,
-                error != null ? Tag.of("exception", error.getClass().getName()) : NONE_EXCEPTION_TAG
-        );
+        return Arrays.asList(JSON_ENCODING_TAG, error != null ? Tag.of("exception", error.getClass().getName()) : NONE_EXCEPTION_TAG);
     }
 
     @Override
