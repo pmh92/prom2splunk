@@ -82,7 +82,7 @@ public class DefaultTcpSplunkSink implements SplunkSink {
         this.client = builder;
         this.registry = metrics;
 
-        this.pool = PoolBuilder.from(Mono.defer(this.client::connect))
+        this.pool = PoolBuilder.from(this.client.connect())
                 .sizeBetween(0, properties.getMaxConnections())
                 .evictInBackground(properties.getConnectionIdleTimeout())
                 .buildPool();
