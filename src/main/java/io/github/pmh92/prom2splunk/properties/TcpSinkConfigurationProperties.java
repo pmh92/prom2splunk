@@ -1,5 +1,5 @@
 /*
- * Copyright 2020. Pedro Morales
+ * Copyright 2022. Pedro Morales
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -17,6 +17,7 @@ import org.springframework.validation.annotation.Validated;
 
 import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -44,9 +45,20 @@ public class TcpSinkConfigurationProperties {
      * Whether the Splunk sink is using TLS
      */
     private boolean secure = false;
+
+    /**
+     * Maximum number of concurrent connections to the target
+     */
+    private int maxConnections = 64;
+
+    /**
+     * Time after which, an idle duration will be closed
+     */
+    private Duration connectionIdleTimeout = Duration.ofSeconds(30);
     /**
      * Whether the Splunk sink shall eagerly connect to the target
      */
+    @Deprecated
     private boolean eagerLoad = true;
 
     /**
@@ -77,6 +89,22 @@ public class TcpSinkConfigurationProperties {
 
     public void setSecure(boolean secure) {
         this.secure = secure;
+    }
+
+    public int getMaxConnections() {
+        return maxConnections;
+    }
+
+    public void setMaxConnections(int maxConnections) {
+        this.maxConnections = maxConnections;
+    }
+
+    public Duration getConnectionIdleTimeout() {
+        return connectionIdleTimeout;
+    }
+
+    public void setConnectionIdleTimeout(Duration connectionIdleTimeout) {
+        this.connectionIdleTimeout = connectionIdleTimeout;
     }
 
     public boolean isEagerLoad() {
