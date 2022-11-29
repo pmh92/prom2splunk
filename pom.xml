@@ -20,7 +20,7 @@
     </parent>
     <groupId>io.github.pmh92</groupId>
     <artifactId>prom2splunk</artifactId>
-    <version>0.0.2-SNAPSHOT</version>
+    <version>0.0.3-SNAPSHOT</version>
     <name>io.github.pmh92:prom2splunk</name>
     <description>Prometheus To Splunk Connector</description>
     <url>https://github.com/pmh92/prom2splunk</url>

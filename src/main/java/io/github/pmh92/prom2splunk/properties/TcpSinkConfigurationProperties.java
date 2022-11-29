@@ -52,7 +52,7 @@ public class TcpSinkConfigurationProperties {
     private int maxConnections = 64;
 
     /**
-     * Time after which, an idle duration will be closed
+     * Time after which, an idle connection will be closed
      */
     private Duration connectionIdleTimeout = Duration.ofSeconds(30);
     /**
